@@ -8,31 +8,25 @@
   ******************************************************************************
   * @attention
   *
-  * 实验平台:秉火  STM32 F429 开发板 
+  * 实验平台:野火  STM32 F429 开发板 
   * 论坛    :http://www.firebbs.cn
-  * 淘宝    :http://firestm32.taobao.com
+  * 淘宝    :https://fire-stm32.taobao.com
   *
   ******************************************************************************
   */ 
 
 #include "./touch/bsp_i2c_touch.h"
 #include "./touch/gt9xx.h"
-#include "bsp_debug_usart.h"
+#include "./uart/bsp_debug_usart.h"
 
 
-/* STM32 I2C 快速模式 */
-#define I2C_Speed              400000
-
-/* 这个地址只要与STM32外挂的I2C器件地址不一样即可 */
-#define I2C_OWN_ADDRESS7      0x0A
-
+__IO uint32_t  I2CTimeout = I2CT_LONG_TIMEOUT;   
 
 
 static void Delay(__IO uint32_t nCount)	 //简单的延时函数
 {
 	for(; nCount != 0; nCount--);
 }
-
 
 /**
   * @brief  使能触摸屏中断
@@ -113,7 +107,7 @@ void I2C_GTP_IRQDisable(void)
 }
 
 /**
-  * @brief  触摸屏 I/O配置
+  * @brief  I2C1 I/O配置
   * @param  无
   * @retval 无
   */
@@ -121,17 +115,14 @@ static void I2C_GPIO_Config(void)
 {
   GPIO_InitTypeDef GPIO_InitStructure;  
    
-  /*使能I2C时钟 */
-  GTP_I2C_CLK_INIT(GTP_I2C_CLK, ENABLE);
+  /*!< GTP_I2C Periph clock enable */
+  RCC_APB1PeriphClockCmd(GTP_I2C_CLK, ENABLE);
   
-  /*使能触摸屏使用的引脚的时钟*/
-  RCC_AHB1PeriphClockCmd(GTP_I2C_SCL_GPIO_CLK|
-                       	 GTP_I2C_SDA_GPIO_CLK|
-	                       GTP_RST_GPIO_CLK|GTP_INT_GPIO_CLK, 
-	                       ENABLE);
+  /*!< GTP_I2C_SCL_GPIO_CLK and GTP_I2C_SDA_GPIO_CLK Periph clock enable */
+  RCC_AHB1PeriphClockCmd(GTP_I2C_SCL_GPIO_CLK | GTP_I2C_SDA_GPIO_CLK|GTP_RST_GPIO_CLK|GTP_INT_GPIO_CLK, ENABLE);
 
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
-
+ 
 #if !(SOFT_IIC)   //使用硬件IIC     
     /* 配置I2C_SCL源*/
     GPIO_PinAFConfig(GTP_I2C_SCL_GPIO_PORT, 
@@ -166,7 +157,8 @@ static void I2C_GPIO_Config(void)
     GPIO_Init(GTP_I2C_SDA_GPIO_PORT, &GPIO_InitStructure);
 #endif
  
-  /*配置RST引脚，下拉推挽输出 */   
+ 
+  /*!< Configure RST */   
   GPIO_InitStructure.GPIO_Pin = GTP_RST_GPIO_PIN;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -174,14 +166,14 @@ static void I2C_GPIO_Config(void)
   GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;
   GPIO_Init(GTP_RST_GPIO_PORT, &GPIO_InitStructure);
   
-  /*配置 INT引脚，下拉推挽输出，方便初始化 */   
+  /*!< Configure INT */   
   GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-	//设置为下拉，方便初始化
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;
+  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;       //设置为下拉，方便初始化
   GPIO_Init(GTP_INT_GPIO_PORT, &GPIO_InitStructure);
+
 }
 
 
@@ -194,7 +186,7 @@ void I2C_ResetChip(void)
 {
 	  GPIO_InitTypeDef GPIO_InitStructure;
 
-  /*配置 INT引脚，下拉推挽输出，方便初始化 */   
+	  /*!< Configure INT */
 	  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
 	  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
 	  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -212,7 +204,8 @@ void I2C_ResetChip(void)
 	  GPIO_SetBits (GTP_RST_GPIO_PORT,GTP_RST_GPIO_PIN);
 	  Delay(0x0FFFFF);
 
-	  /*把INT引脚设置为浮空输入模式，以便接收触摸中断信号*/
+	  /*把INT引脚设置为浮空输入模式*/
+	  /*!< Configure INT */
 	  GPIO_InitStructure.GPIO_Pin = GTP_INT_GPIO_PIN;
 	  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
 	  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -221,6 +214,7 @@ void I2C_ResetChip(void)
 }
 
 #if !(SOFT_IIC) //硬件IIC模式 
+
 /**
   * @brief  I2C 工作模式配置
   * @param  无
@@ -230,18 +224,19 @@ static void I2C_Mode_Config(void)
 {
   I2C_InitTypeDef  I2C_InitStructure; 
 
-  /* I2C 模式配置 */
+  /* I2C 配置 */
   I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;	
-  I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;		                    
+  I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;		                    /* 高电平数据稳定，低电平数据变化 SCL 时钟线的占空比 */
   I2C_InitStructure.I2C_OwnAddress1 =I2C_OWN_ADDRESS7;
   I2C_InitStructure.I2C_Ack = I2C_Ack_Enable ;	
   I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;	/* I2C的寻址模式 */
-  I2C_InitStructure.I2C_ClockSpeed = I2C_Speed;	                          /* 通信速率 */
+  I2C_InitStructure.I2C_ClockSpeed = I2C_Speed;	                            /* 通信速率 */
   I2C_Init(GTP_I2C, &I2C_InitStructure);	                                  /* I2C1 初始化 */
   I2C_Cmd(GTP_I2C, ENABLE);  	                                              /* 使能 I2C1 */
 
   I2C_AcknowledgeConfig(GTP_I2C, ENABLE);
-
+  
+//  I2C_GenerateSTOP (I2C1,DISABLE);
 }
 #endif
 
@@ -257,18 +252,24 @@ void I2C_Touch_Init(void)
 #if !(SOFT_IIC) //硬件IIC模式 
     I2C_Mode_Config();
 #endif
-  
-  I2C_ResetChip();
 
+  I2C_ResetChip();
+  
   I2C_GTP_IRQEnable();
 }
 
+#if !(SOFT_IIC) //硬件IIC模式
+/**
+  * @brief  IIC等待超时调用本函数输出调试信息
+  * @param  None.
+  * @retval None.
+  */
+static  uint32_t I2C_TIMEOUT_UserCallback(void)
+{
+  GTP_ERROR("I2C Timeout error!");
+  return 0xFF;
+}
 
-#if !(SOFT_IIC)   //使用硬件IIC     
-
-
-__IO uint32_t  I2CTimeout = I2CT_LONG_TIMEOUT;   
-static uint32_t I2C_TIMEOUT_UserCallback(uint8_t errorCode);
 
 /**
   * @brief   使用IIC读取数据
@@ -284,18 +285,18 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
 
     while(I2C_GetFlagStatus(GTP_I2C, I2C_FLAG_BUSY))   
     {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(0);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
     }
 
-		/* Send STRAT condition  */
-		I2C_GenerateSTART(GTP_I2C, ENABLE);
+  /* Send STRAT condition  */
+  I2C_GenerateSTART(GTP_I2C, ENABLE);
   
      I2CTimeout = I2CT_FLAG_TIMEOUT;
 
   /* Test on EV5 and clear it */
   while(!I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_MODE_SELECT))
     {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(1);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
    }
   /* Send GT91xx address for read */
   I2C_Send7bitAddress(GTP_I2C, ClientAddr, I2C_Direction_Receiver);
@@ -305,7 +306,7 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
   /* Test on EV6 and clear it */
   while(!I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED))
     {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(2);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
    }
   /* While there is data to be read */
   while(NumByteToRead)  
@@ -319,24 +320,18 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
       I2C_GenerateSTOP(GTP_I2C, ENABLE);
     }
 
-
-		I2CTimeout = I2CT_LONG_TIMEOUT;
-		while(I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_BYTE_RECEIVED)==0)  
-		{
-			if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(3);
-		} 	
-		{
-		  /* Read a byte from the device */
+    /* Test on EV7 and clear it */
+    if(I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_BYTE_RECEIVED))  
+    {      
+      /* Read a byte from the EEPROM */
       *pBuffer = I2C_ReceiveData(GTP_I2C);
 
       /* Point to the next location where the byte read will be saved */
       pBuffer++; 
       
       /* Decrement the read bytes counter */
-      NumByteToRead--;
-		}			
-
-		
+      NumByteToRead--;        
+    }   
   }
 
   /* Enable Acknowledgement to be ready for another reception */
@@ -356,12 +351,11 @@ uint32_t I2C_ReadBytes(uint8_t ClientAddr,uint8_t* pBuffer, uint16_t NumByteToRe
   */
 uint32_t I2C_WriteBytes(uint8_t ClientAddr,uint8_t* pBuffer,  uint8_t NumByteToWrite)
 {
-  
   I2CTimeout = I2CT_LONG_TIMEOUT;
 
   while(I2C_GetFlagStatus(GTP_I2C, I2C_FLAG_BUSY))  
    {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(4);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
   } 
   
   /* Send START condition */
@@ -373,7 +367,7 @@ uint32_t I2C_WriteBytes(uint8_t ClientAddr,uint8_t* pBuffer,  uint8_t NumByteToW
   /* Test on EV5 and clear it */
   while(!I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_MODE_SELECT))
   {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(5);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
   } 
   
   /* Send GT91xx address for write */
@@ -384,7 +378,7 @@ uint32_t I2C_WriteBytes(uint8_t ClientAddr,uint8_t* pBuffer,  uint8_t NumByteToW
   /* Test on EV6 and clear it */
   while(!I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) 
   {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(6);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
   } 
   /* While there is data to be written */
   while(NumByteToWrite--)  
@@ -400,32 +394,19 @@ uint32_t I2C_WriteBytes(uint8_t ClientAddr,uint8_t* pBuffer,  uint8_t NumByteToW
     /* Test on EV8 and clear it */
     while (!I2C_CheckEvent(GTP_I2C, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
     {
-    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback(7);
+    if((I2CTimeout--) == 0) return I2C_TIMEOUT_UserCallback();
     } 
   }
 
   /* Send STOP condition */
   I2C_GenerateSTOP(GTP_I2C, ENABLE);
   
-  return 0;  
-
+  return 0;
 }
 
 
-/**
-  * @brief  IIC等待超时调用本函数输出调试信息
-  * @param  None.
-  * @retval 返回0xff，表示IIC读取数据失败
-  */
-static  uint32_t I2C_TIMEOUT_UserCallback(uint8_t errorCode)
-{
-  /* Block communication and all processes */
-  GTP_ERROR("I2C 等待超时!errorCode = %d",errorCode);
-  
-  return 0xFF;
-}
+#else   //软件IIC模式
 
-#else //使用软件IIC
 
 /*
 *********************************************************************************************************

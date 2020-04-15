@@ -10,7 +10,7 @@
   *
   * 实验平台:秉火  STM32  F429 开发板
   * 论坛    :http://www.firebbs.cn
-  * 淘宝    :http://firestm32.taobao.com
+  * 淘宝    :https://fire-stm32.taobao.com
   *
   ******************************************************************************
   */
@@ -19,6 +19,28 @@
 #include "./touch/gt9xx.h"
 #include "./lcd/bsp_lcd.h"
  
+ 
+const COLOR_BLOCK_PARAM_TypeDef color_block_param[LCD_TYPE_NUM] =
+{
+  /* 5寸屏的色块大小 */
+  {
+    .width = 90,
+    .height = 50,
+  },
+  
+  /* 7寸屏的色块大小 */
+  {
+    .width = 90,
+    .height = 50,
+  },
+  
+  /* 4.3寸屏的色块大小 */
+  {
+    .width = 40,
+    .height = 27,
+  }
+};
+
 /*按钮结构体数组*/
 Touch_Button button[BUTTON_NUM];
 
@@ -508,8 +530,8 @@ static void Draw_Clear_Button(void *btn)
 		/*这个函数只对英文字体起作用*/
 		LCD_SetFont(&Font16x24);
     LCD_DispString_EN_CH( ptr->start_y+25,
-														ptr->start_x + (ptr->end_x - ptr->start_x - 24*2 )/2,                     
-														(uint8_t*)"清屏");
+														ptr->start_x + (ptr->end_x - ptr->start_x - 24*1 )/2,                     
+														(uint8_t*)"C");
   }
   else  /*按键按下*/
   {
@@ -527,8 +549,8 @@ static void Draw_Clear_Button(void *btn)
 		/*这个函数只对英文字体起作用*/
 		LCD_SetFont(&Font16x24);
     LCD_DispString_EN_CH( ptr->start_y+25,
-														ptr->start_x + (ptr->end_x - ptr->start_x - 24*2 )/2,                     
-														(uint8_t*)"清屏");
+														ptr->start_x + (ptr->end_x - ptr->start_x - 24*1 )/2,                     
+														(uint8_t*)"C");
   } 
   
      /*按钮边框*/
@@ -690,21 +712,21 @@ static void Draw_Shape_Button(void *btn)
       
     case RUBBER:
 			LCD_SetColors(CL_WHITE,CL_BLACK);
-       LCD_DrawFullRect( ptr->start_x+((ptr->end_x - ptr->start_x -40)/2),
-                          ptr->start_y+ ((ptr->end_y - ptr->start_y-40 -30)/2),
-                          40,
-                          40 );   
+       LCD_DrawFullRect( ptr->start_x+((ptr->end_x - ptr->start_x -30)/2),
+                          ptr->start_y+ ((ptr->end_y - ptr->start_y -30)/2),
+                          30,
+                          35 );   
       
   
-			LCD_SetColors(CL_RED,CL_BUTTON_GREY);    
+			LCD_SetColors(CL_RED,CL_WHITE);    
 
 		/*选择字体，使用中英文显示时，尽量把英文选择成16*24的字体，
 		*中文字体大小是24*24的，需要其它字体请自行制作字模*/
 		/*这个函数只对英文字体起作用*/
 		LCD_SetFont(&Font16x24);
-    LCD_DispString_EN_CH( ptr->end_y -30,
-														ptr->start_x+(ptr->end_x - ptr->start_x -24*2)/2,
-														(uint8_t*)"橡皮");
+    LCD_DispString_EN_CH( ptr->start_y+ ((ptr->end_y - ptr->start_y -20)/2),
+														ptr->start_x+(ptr->end_x - ptr->start_x -24*1)/2,
+														(uint8_t*)"R");
 		
 
     break;
@@ -828,8 +850,8 @@ static void LCD_DrawUniLineCircle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_
   {
 		
 		//判断边界
-		if(x+thick>LCD_PIXEL_WIDTH || x-thick<0 || //液晶左右边界
-			y+thick>LCD_PIXEL_HEIGHT || y-thick<0  ) //液晶上下边界
+		if(x+thick>=LCD_PIXEL_WIDTH || x-thick<=0 || //液晶左右边界
+			y+thick>=LCD_PIXEL_HEIGHT || y-thick<=0  ) //液晶上下边界
 			continue;
 
     LCD_DrawFullCircle(x,y,thick);             /* Draw the current pixel */
